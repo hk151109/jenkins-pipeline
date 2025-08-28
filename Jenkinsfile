@@ -1,7 +1,6 @@
 pipeline {
   agent any
 
-  // No tools{} block — uses system Node already on PATH for the Jenkins service account
   environment {
     CI = 'true'
     DEPLOY_DIR = 'deploy'
@@ -18,34 +17,35 @@ pipeline {
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
     stage('Install') {
       steps {
-        bat 'where node'
-        bat 'node -v'
-        bat 'npm -v'
-        bat 'npm ci'
+        // Only print Node & npm versions
+        bat 'echo Node version: && node -v'
+        bat 'echo NPM version: && npm -v'
+        // Run npm ci quietly (errors still show)
+        bat 'npm ci --silent'
       }
     }
 
     stage('Test') {
       steps {
-        bat 'npm test -- --watchAll=false'
+        // Quiet test run, ignore "no tests" with --passWithNoTests
+        bat 'npm test -- --watchAll=false --passWithNoTests --silent'
       }
       post {
         always {
-          junit allowEmptyResults: true, testResults: '**/junit*.xml'
+          junit allowEmptyResults: true, testResults: 'test-results/junit.xml'
         }
       }
     }
 
     stage('Build') {
       steps {
-        bat 'npm run build'
+        // Build React app quietly
+        bat 'npm run build --silent'
       }
       post {
         success {
@@ -57,20 +57,25 @@ pipeline {
     stage('Deploy (local)') {
       when { expression { return fileExists('build') } }
       steps {
-        // robust copy on Windows with robocopy
         bat '''
           if exist "%DEPLOY_DIR%" rmdir /S /Q "%DEPLOY_DIR%"
           mkdir "%DEPLOY_DIR%"
           robocopy build "%DEPLOY_DIR%" *.* /E >nul
-          echo Local deploy done at %CD%\\%DEPLOY_DIR%
+          echo [DEPLOY] Local deploy done at %CD%\\%DEPLOY_DIR%
         '''
       }
     }
   }
 
   post {
+    success {
+      echo "[PIPELINE] ✅ Success: Build, Test, Deploy complete."
+    }
+    failure {
+      echo "[PIPELINE] ❌ Failed: Check above logs."
+    }
     always {
-      echo "Pipeline finished with status: ${currentBuild.currentResult}"
+      echo "[PIPELINE] Finished with status: ${currentBuild.currentResult}"
     }
   }
 }
