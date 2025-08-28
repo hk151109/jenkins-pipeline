@@ -1,10 +1,7 @@
 pipeline {
   agent any
 
-  tools {
-    nodejs 'node18' 
-  }
-
+  // No tools{} block — uses system Node already on PATH for the Jenkins service account
   environment {
     CI = 'true'
     DEPLOY_DIR = 'deploy'
@@ -28,15 +25,16 @@ pipeline {
 
     stage('Install') {
       steps {
-        sh 'node -v'
-        sh 'npm -v'
-        sh 'npm ci'
+        bat 'where node'
+        bat 'node -v'
+        bat 'npm -v'
+        bat 'npm ci'
       }
     }
 
     stage('Test') {
       steps {
-        sh 'npm test -- --watchAll=false'
+        bat 'npm test -- --watchAll=false'
       }
       post {
         always {
@@ -47,7 +45,7 @@ pipeline {
 
     stage('Build') {
       steps {
-        sh 'npm run build'
+        bat 'npm run build'
       }
       post {
         success {
@@ -59,11 +57,12 @@ pipeline {
     stage('Deploy (local)') {
       when { expression { return fileExists('build') } }
       steps {
-        sh '''
-          rm -rf "${DEPLOY_DIR}"
-          mkdir -p "${DEPLOY_DIR}"
-          cp -r build/* "${DEPLOY_DIR}/"
-          echo "Local deploy done at ${PWD}/${DEPLOY_DIR}"
+        // robust copy on Windows with robocopy
+        bat '''
+          if exist "%DEPLOY_DIR%" rmdir /S /Q "%DEPLOY_DIR%"
+          mkdir "%DEPLOY_DIR%"
+          robocopy build "%DEPLOY_DIR%" *.* /E >nul
+          echo Local deploy done at %CD%\\%DEPLOY_DIR%
         '''
       }
     }
